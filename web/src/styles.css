@@ -1,0 +1,664 @@
+:root {
+  --wall: #f4e7dd;
+  --wall-2: #ffd9c0;
+  --floor: #e3c9b4;
+  --floor-2: #cfae95;
+  --panel: #fffaf5;
+  --ink: #4a3b34;
+  --ink-soft: #8a756a;
+  --line: #e6d3c5;
+  --shadow: rgba(90, 60, 45, 0.18);
+  --radius: 22px;
+
+  /* 角色的臉獨立於面板色：跟著主題翻黑的話，深臉配淺眼會變成暗房裡瞪人的鬼 */
+  --face: #fffaf5;
+  --face-ink: #4a3b34;
+  --grid-line: rgba(120, 80, 55, 0.14);
+}
+
+:root[data-theme="night"] {
+  --wall: #34324d;
+  --wall-2: #46436c;
+  --floor: #2a2840;
+  --floor-2: #201e32;
+  --panel: #3e3b5a;
+  --ink: #f2eefb;
+  --ink-soft: #bdb6d8;
+  --line: #555275;
+  --shadow: rgba(12, 8, 28, 0.42);
+  /* 夜裡臉仍是暖白的，只把眼睛換成偏藍的深色 */
+  --face: #f6f2ff;
+  --face-ink: #3a3556;
+  --grid-line: rgba(180, 170, 220, 0.12);
+}
+
+:root[data-theme="mint"] {
+  --wall: #e6f5ee;
+  --wall-2: #cdeade;
+  --floor: #cfe6da;
+  --floor-2: #b3d3c4;
+  --panel: #fbfffd;
+  --ink: #31473f;
+  --ink-soft: #6d8a7e;
+  --line: #d3e8dd;
+  --shadow: rgba(40, 80, 65, 0.16);
+  --face: #fbfffd;
+  --face-ink: #31473f;
+  --grid-line: rgba(60, 110, 90, 0.13);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  padding: 28px 18px 48px;
+  font-family: "Nunito", system-ui, sans-serif;
+  color: var(--ink);
+  background: linear-gradient(160deg, var(--wall) 0%, var(--wall-2) 100%);
+  transition: background 0.4s ease, color 0.3s ease;
+}
+
+.shell {
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+/* ---------- header ---------- */
+header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+h1 {
+  font-family: "Baloo 2", cursive;
+  font-size: 1.7rem;
+  margin: 0 0 2px;
+  letter-spacing: 0.5px;
+}
+
+.sub {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+
+.head-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.conn {
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  white-space: nowrap;
+}
+.conn--live {
+  border-color: #4bb8a9;
+  color: #2f7d72;
+}
+.conn--lost {
+  border-color: #e0736b;
+  color: #b8453c;
+}
+
+.themes {
+  display: flex;
+  gap: 6px;
+}
+.themes button {
+  font-family: "Baloo 2", cursive;
+  font-size: 0.82rem;
+  cursor: pointer;
+  border: 2px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  padding: 5px 12px;
+  border-radius: 999px;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+.themes button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px var(--shadow);
+}
+.themes button[aria-pressed="true"] {
+  border-color: #ff8a6b;
+  box-shadow: 0 0 0 3px rgba(255, 138, 107, 0.25);
+}
+
+/* ---------- 房間 ---------- */
+.stage {
+  position: relative;
+  height: 440px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    var(--wall-2) 0%,
+    var(--wall) 56%,
+    var(--floor) 56%,
+    var(--floor-2) 100%
+  );
+  box-shadow: 0 20px 44px var(--shadow), inset 0 0 0 3px rgba(255, 255, 255, 0.22);
+  transition: background 0.4s ease;
+  perspective: 620px;
+}
+
+/*
+ * 透視地板：一張往後仰的網格，製造縱深。
+ * 有了縱深，站在畫面上方＝站在房間深處，而不是飄在半空。
+ */
+.floor-grid {
+  position: absolute;
+  left: -35%;
+  right: -35%;
+  bottom: 0;
+  /* 地板頂緣對齊房間的 wall/floor 分界（56%），一路鋪到底 */
+  height: 48%;
+  transform-origin: bottom center;
+  transform: rotateX(58deg);
+  background-image: linear-gradient(var(--grid-line) 1.5px, transparent 1.5px),
+    linear-gradient(90deg, var(--grid-line) 1.5px, transparent 1.5px);
+  background-size: 40px 40px;
+  /* 遠處（上方）的線淡出，近處清晰 —— 這就是縱深感的來源 */
+  -webkit-mask-image: linear-gradient(transparent 2%, #000 55%);
+  mask-image: linear-gradient(transparent 2%, #000 55%);
+  pointer-events: none;
+}
+
+.window {
+  position: absolute;
+  top: 36px;
+  width: 104px;
+  height: 82px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #bfe4ff, #eaf7ff);
+  border: 5px solid var(--panel);
+  box-shadow: 0 6px 14px var(--shadow);
+}
+.window::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  left: 50%;
+  border-left: 4px solid var(--panel);
+}
+.window.w1 {
+  left: 76px;
+}
+.window.w2 {
+  right: 76px;
+}
+:root[data-theme="night"] .window {
+  background: linear-gradient(180deg, #1c2145, #2e3566);
+}
+
+.plant {
+  position: absolute;
+  bottom: 14px;
+  left: 22px;
+  width: 46px;
+  height: 74px;
+}
+.plant .pot {
+  position: absolute;
+  bottom: 0;
+  left: 9px;
+  width: 28px;
+  height: 26px;
+  border-radius: 0 0 10px 10px;
+  background: #ff8a6b;
+  opacity: 0.85;
+}
+.plant .leaf {
+  position: absolute;
+  bottom: 22px;
+  width: 16px;
+  height: 40px;
+  border-radius: 50% 50% 40% 40%;
+  background: #6bbf7a;
+}
+.plant .leaf.l {
+  left: 4px;
+  transform: rotate(-22deg);
+}
+.plant .leaf.r {
+  right: 4px;
+  transform: rotate(22deg);
+}
+.plant .leaf.c {
+  left: 15px;
+  height: 50px;
+}
+
+/* ---------- 工位 ---------- */
+.stations {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 14px;
+  display: flex;
+  justify-content: space-evenly;
+  align-items: flex-end;
+  padding: 0 20px;
+}
+
+.station {
+  width: 200px;
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.18s;
+}
+.station:hover {
+  transform: translateY(-4px);
+}
+.station[data-state="offline"] {
+  opacity: 0.5;
+}
+
+.badge {
+  display: inline-block;
+  margin-bottom: 8px;
+  padding: 4px 13px;
+  border-radius: 999px;
+  font-family: "Baloo 2", cursive;
+  font-size: 0.85rem;
+  background: var(--tint);
+  color: var(--face-ink);
+  border: 2px solid var(--ac);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desk {
+  height: 15px;
+  border-radius: 6px 6px 3px 3px;
+  background: var(--ac);
+  opacity: 0.9;
+  box-shadow: 0 5px 10px var(--shadow);
+}
+.desk::after {
+  content: "";
+  display: block;
+  margin: 15px auto 0;
+  width: 72%;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--ac);
+  opacity: 0.32;
+}
+
+.status {
+  margin: 10px 0 2px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+.dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--ac);
+  vertical-align: middle;
+}
+.station[data-state="working"] .dot {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+}
+
+.session-id {
+  margin: 2px 0 0;
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+  opacity: 0.75;
+}
+
+.station .detail {
+  margin: 0 4px;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--ink-soft);
+  min-height: 2em;
+}
+
+/* ---------- 角色 ---------- */
+.walker {
+  position: absolute;
+  /* 常駐站在自己工位正後方：高過名牌（工位頂緣約 144px），又不離開地板 */
+  bottom: 152px;
+  width: 54px;
+  margin-left: -27px;
+  cursor: pointer;
+  z-index: 5;
+}
+
+/*
+ * 臨時同事站在房間深處：畫面上比較高＝站得比較遠，因為地板有透視縱深。
+ * 較小＋較淡＝遠處的空氣透視，落地影子仍在（站在地板上，不是漂浮）。
+ */
+.walker[data-kind="transient"] {
+  /* 腳必須落在 wall/floor 分界（畫面約 y=359）下方，否則會像貼在牆上飄著 */
+  bottom: 176px;
+  width: 40px;
+  margin-left: -20px;
+  z-index: 4;
+  filter: saturate(0.9) opacity(0.92);
+}
+.walker[data-kind="transient"] .drop-shadow {
+  width: 30px;
+}
+
+.antenna {
+  width: 2px;
+  height: 12px;
+  margin: 0 auto;
+  background: var(--ac);
+}
+.antenna::before {
+  content: "";
+  display: block;
+  width: 8px;
+  height: 8px;
+  margin: -7px auto 0;
+  border-radius: 50%;
+  background: var(--ac);
+  box-shadow: 0 0 0 4px var(--tint);
+}
+
+.head {
+  position: relative;
+  width: 40px;
+  height: 34px;
+  margin: 0 auto;
+  border-radius: 14px;
+  background: var(--face);
+  border: 3px solid var(--ac);
+  box-shadow: 0 4px 8px var(--shadow);
+}
+.eye {
+  position: absolute;
+  top: 12px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--face-ink);
+  animation: blink 4.3s infinite;
+}
+.eye.l {
+  left: 8px;
+}
+.eye.r {
+  right: 8px;
+}
+@keyframes blink {
+  0%,
+  94%,
+  100% {
+    transform: scaleY(1);
+  }
+  97% {
+    transform: scaleY(0.1);
+  }
+}
+.cheek {
+  position: absolute;
+  top: 20px;
+  width: 7px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ac);
+  opacity: 0.5;
+}
+.cheek.l {
+  left: 4px;
+}
+.cheek.r {
+  right: 4px;
+}
+
+.torso {
+  width: 34px;
+  height: 26px;
+  margin: 3px auto 0;
+  border-radius: 10px 10px 8px 8px;
+  background: var(--ac);
+  box-shadow: 0 5px 10px var(--shadow);
+}
+.torso::after {
+  content: "";
+  display: block;
+  width: 16px;
+  height: 3px;
+  margin: 9px auto;
+  border-radius: 2px;
+  background: var(--face);
+  opacity: 0.75;
+}
+
+.drop-shadow {
+  width: 38px;
+  height: 7px;
+  margin: 2px auto 0;
+  border-radius: 50%;
+  background: var(--shadow);
+}
+
+.bubble {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 10px;
+  /* 不用 nowrap：角色靠近時長泡泡會互相遮蔽，寧可換行也不要蓋掉別人的狀態 */
+  width: max-content;
+  max-width: 190px;
+  text-align: center;
+  line-height: 1.35;
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: var(--face);
+  border: 2px solid var(--ac);
+  color: var(--face-ink);
+  font-size: 0.74rem;
+  font-weight: 700;
+  box-shadow: 0 6px 14px var(--shadow);
+  pointer-events: none;
+}
+.bubble::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border: 6px solid transparent;
+  border-top-color: var(--ac);
+}
+
+/* ---------- 空狀態 ---------- */
+.empty {
+  position: absolute;
+  inset: auto 0 46%;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  padding: 0 24px;
+}
+
+.overflow {
+  position: absolute;
+  right: 16px;
+  bottom: 10px;
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  background: var(--panel);
+  padding: 4px 12px;
+  border-radius: 999px;
+  box-shadow: 0 4px 10px var(--shadow);
+}
+
+/* ---------- 任務面板 ---------- */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(40, 25, 20, 0.45);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 50;
+}
+
+.modal {
+  width: 100%;
+  max-width: 480px;
+  max-height: 80vh;
+  overflow: auto;
+  padding: 22px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  border-top: 6px solid var(--ac);
+}
+
+.modal h2 {
+  font-family: "Baloo 2", cursive;
+  margin: 0 0 2px;
+  font-size: 1.25rem;
+}
+
+.modal-sub {
+  margin: 0 0 12px;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+.cwd {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.72rem;
+  word-break: break-all;
+}
+
+.modal-detail {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--tint);
+  color: var(--face-ink);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.modal-empty {
+  margin: 18px 0;
+  text-align: center;
+  font-size: 0.84rem;
+  color: var(--ink-soft);
+}
+
+.sub-head {
+  margin: 18px 0 2px;
+  font-family: "Baloo 2", cursive;
+  font-size: 0.95rem;
+}
+
+.task {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.task-top {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+.task-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.pill {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: var(--tint);
+  color: var(--face-ink);
+  border: 1px solid var(--ac);
+}
+.pill.idle {
+  background: transparent;
+  color: var(--ink-soft);
+  border-color: var(--line);
+}
+.owner {
+  margin: 5px 0 0;
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+.bar {
+  margin-top: 8px;
+  height: 8px;
+  border-radius: 5px;
+  background: var(--tint);
+  overflow: hidden;
+}
+.bar span {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  background: var(--ac);
+}
+
+.close {
+  margin-top: 18px;
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-family: "Baloo 2", cursive;
+  font-size: 0.95rem;
+  background: var(--ac);
+  color: #fff;
+}
+
+@media (max-width: 640px) {
+  .stage {
+    height: 400px;
+  }
+  .station {
+    width: 140px;
+  }
+  .window {
+    display: none;
+  }
+}

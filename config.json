@@ -1,0 +1,29 @@
+{
+  "$comment": "agent 的顯示設定。collector 只負責狀態，長相與台詞在這裡調。key 對應 AgentState.name 的正規化結果。",
+  "agents": {
+    "claude": {
+      "label": "Claude Code",
+      "accent": "#ff8a6b",
+      "tint": "#ffe6dd",
+      "phrases": ["在改程式碼…", "先跑一次編譯", "等等，這裡要判斷 null", "寫好了，來提醒 review"]
+    },
+    "codex": {
+      "label": "Codex",
+      "accent": "#4bb8a9",
+      "tint": "#dcf3ef",
+      "phrases": ["背景調查跑起來了", "找到根因了…", "先分析，不動程式碼", "報告產好了"]
+    },
+    "codex-cli": {
+      "label": "Codex CLI",
+      "accent": "#8f7fe8",
+      "tint": "#e8e3ff",
+      "phrases": ["在讀程式碼…", "整理一下結論", "這段再確認一次", "跑完了"]
+    },
+    "default": {
+      "label": "Agent",
+      "accent": "#6f9bef",
+      "tint": "#e0e9ff",
+      "phrases": ["處理中…", "看一下這段", "快好了"]
+    }
+  }
+}

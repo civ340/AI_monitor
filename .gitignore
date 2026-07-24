@@ -1,0 +1,9 @@
+.claude
+node_modules/
+
+# vite build 產物，可隨時重新產生
+server/public/
+
+# Playwright 截圖與暫存
+.playwright-mcp/
+*.png
