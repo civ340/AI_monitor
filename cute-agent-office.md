@@ -5,6 +5,8 @@ description: Design and build a cute "office" dashboard that visualizes the live
 
 # Cute Agent Office
 
+> 中文版：[cute-agent-office.zh-TW.md](./cute-agent-office.zh-TW.md)
+
 A pattern for turning "I want to monitor my AI agents" into a charming office scene backed by
 real agent state — not a generic table, and not a mock-data toy.
 
@@ -23,15 +25,15 @@ normal dashboard instead — don't force the cute metaphor onto a request for de
 The scene is the hook; the collector service is the substance. Keep them separate.
 
 ```
-採集層  collectors/*.ts     讀各 agent 的狀態檔（格式不歸我們控制）
-              ↓ normalize
-契約    shared/types.ts     AgentState — 前後端唯一真相
-              ↓
-狀態層  server/store.ts     記憶體 store，diff 後只推有變的 agent
-              ↓
-傳輸層  Fastify @127.0.0.1  GET /api/state（首屏）、GET /events（SSE）
-              ↓
-展示層  React + Vite + Motion
+Collectors  collectors/*.ts     read each agent's state files (shapes we don't control)
+                ↓ normalize
+Contract    shared/types.ts     AgentState — the single source of truth for both ends
+                ↓
+State       server/store.ts     in-memory store, diffs and pushes only what changed
+                ↓
+Transport   Fastify @127.0.0.1  GET /api/state (first paint), GET /events (SSE)
+                ↓
+View        React + Vite + Motion
 ```
 
 Why the collector layer exists: every agent writes a different shape, and those shapes change
@@ -45,11 +47,11 @@ Everything downstream of the collectors knows only this:
 ```ts
 type AgentState = {
   id: string;
-  kind: "resident" | "transient";   // 常駐工位 vs 臨時借調的 subagent
-  parent?: string;                  // transient 的話，指向所屬 resident
-  name: string;                     // 顯示名："Claude Code" / "codex-rescue"
+  kind: "resident" | "transient";   // fixed desk vs. a borrowed sub-agent
+  parent?: string;                  // for transient: points at its owning resident
+  name: string;                     // display name: "Claude Code" / "codex-rescue"
   state: "working" | "idle" | "offline";
-  detail?: string;                  // 一句話現況 → 泡泡台詞 + 工位狀態列
+  detail?: string;                  // one-line status → bubble text + station status line
   tasks: { id: string; subject: string; status: string; progress: number }[];
   updatedAt: number;
 };
@@ -63,21 +65,24 @@ from the agent's own log. A phrase bank is only a **fallback** for when `detail`
 | # | Path | Yields |
 |---|---|---|
 | 1 | `~/.claude/sessions/<pid>.json` | One file per live Claude Code session: `pid, sessionId, cwd, name, status:"busy", kind, updatedAt`. The resident heartbeat. |
-| 2 | `~/.claude/tasks/<sessionId>/<n>.json` | `id, subject, description, status, blocks, blockedBy`. Task panel + real progress (completed/total). |
-| 3 | `~/.claude/jobs/<short>/state.json` | `state:"working"\|"done", detail, tempo, inFlight:{tasks,queued,kinds}, name, intent, tokens, children`. |
-| 4 | `~/.claude/jobs/<short>/timeline.jsonl` | Append-only `{at, state, detail, text}`. Read `detail` for bubbles. |
-| 5 | `plugins/data/codex-openai-codex/state/<proj>-<hash>/state.json` | `jobs[]`: `id, kind, title, summary, status, phase, pid, logFile`. Non-null `pid` ⇒ still running. |
+| 2 | `~/.claude/tasks/<sessionId>/<n>.json` | `id, subject, status, activeForm`. Task panel + real progress. `activeForm` is the present-tense line for bubbles. |
+| 3 | `~/.claude/jobs/<short>/state.json` | `state, detail, tempo, inFlight:{tasks,queued,kinds}, name, intent, tokens, children`. |
+| 4 | `~/.claude/jobs/<short>/timeline.jsonl` | Append-only `{at, state, detail, text}`. Read only the last line's `detail`. |
+| 5 | `plugins/data/codex-openai-codex/state/<proj>-<hash>/state.json` | `jobs[]`: `id, kind, title, summary, status, phase, pid`. |
 | 6 | Same dir, `jobs/<jobId>.json` / `.log` | Per-job detail and output. |
+| 7 | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` + `~/.codex/session_index.jsonl` | Native codex CLI. `task_started`/`task_complete` events (pair by `turn_id`) decide running; `user_message` is the current task. |
 
 Notes that save an hour:
 
 - **Do not parse the conversation `.jsonl` transcripts.** Everything needed is in the
-  structured JSON above. Only #4 is line-oriented, and it is trivially shaped.
-- Derive `state` from explicit fields first (`status:"busy"`, `phase`, non-null `pid`), and
-  only fall back to `updatedAt` age (`<30s` working, `<10min` idle, else offline).
+  structured JSON above. Only #4 and #7 are line-oriented, and both are read tail-only.
+- Derive `state` from explicit fields first (`status:"busy"`, `phase`, a live `pid` verified
+  against the OS), and only fall back to `updatedAt` age.
+- A file claiming `running`/`busy` may be lying — a killed process never rewrites its terminal
+  state. Verify a live `pid` against the OS, and apply a staleness window even to `busy`.
 - `inFlight.{tasks,queued}` already answers "how much is in the air" — don't recompute it.
-- `children` on #3 is where sub-agents should appear, but it is often `null`. Write the
-  array branch plus a null fallback; don't block on capturing a live sample.
+- Read append-only logs (`timeline.jsonl`, rollout files) **tail-only**. They grow unbounded;
+  reading the whole file on every change is a memory/CPU DoS.
 
 ## Resident vs. transient characters
 
@@ -86,16 +91,16 @@ Sub-agents are borrowed colleagues, not staff — model them that way:
 | | Members | Lifetime | Scene treatment |
 |---|---|---|---|
 | **Resident** | Claude Code session, Codex | long-lived | fixed desk + name badge, always in the room |
-| **Transient** | scout / executor / verifier / reviewers / codex-rescue | seconds–minutes | no desk; walks in on spawn, fades out on completion |
+| **Transient** | scout / executor / verifier / reviewers / codex-rescue | seconds–minutes | no desk; stands further back on the floor, fades out on completion |
 
 Cap the population or the room becomes soup: ~2 residents + at most 4 transients on stage,
-with any excess collapsed into a corner label ("還有 N 位在加班"). Station count follows live
-data — never hardcode it.
+with any excess collapsed into a corner label ("N more working overtime"). Station count
+follows live data — never hardcode it.
 
 ## Scene recipe
 
-1. **Room** — a rounded `.stage` with wall/floor gradient, a couple of windows, 1–2 decor props.
-   The room is a stage, not the subject.
+1. **Room** — a rounded `.stage` with wall/floor gradient, a perspective floor grid for depth,
+   a couple of windows, 1–2 decor props. The room is a stage, not the subject.
 2. **Stations** — one per *resident*, along the floor: desk + name badge + live one-line status.
 3. **Characters** — one chibi walker per agent (CSS-drawn: head + antenna + torso, no image
    assets) in that agent's accent color. This is the signature element; don't over-animate
@@ -109,32 +114,43 @@ data — never hardcode it.
 6. **Theme switcher** — 2–3 named themes swapping CSS custom properties via a `data-theme`
    attribute. Never build separate DOM per theme.
 
+## Perspective and depth
+
+A flat front-elevation makes "further back" read as "floating in mid-air." Give the floor a
+receding perspective grid (`rotateX` + fade toward the far edge) so a character higher on
+screen reads as standing *deeper in the room*, not levitating. A character's feet must land
+**below** the wall/floor boundary — feet above it look pasted onto the wall.
+
 ## Animation
 
 React unmounts a component the instant an agent disappears, which kills any exit animation —
 so animation is not optional polish here, it is what makes transients readable.
 
 - `AnimatePresence` around the walker list: defers unmount until the fade-out finishes.
-- `layout` prop for wandering: let layout animation move characters instead of hand-written
-  `transition: left`.
+- Motion controls the walker transform; a CSS `transform` on the same element loses to it.
+  Scale via `width`, not `transform`, if you also animate with Motion.
 - Idle bob stays a plain CSS keyframe — don't pay for a spring on a 4px loop.
 
 ## Design tokens
 
-- Each agent gets an accent color + soft tint pair (warm coral / mint / sky). Reuse that pair
-  for badge, character outline, and progress fill so "this color = this agent" everywhere.
+- Each agent gets an accent color + soft tint pair (warm coral / mint / sky / violet). Reuse
+  that pair for badge, character outline, and progress fill so "this color = this agent."
+- Give the character face its **own** token, independent of the panel color — if the face
+  follows the panel into dark mode, a dark face with light eyes becomes a staring ghost.
 - Rounded display font for labels (Baloo 2 / Fredoka) + rounded body font (Nunito).
-- Soft, *colored* shadows (tinted with the ink token, never pure black) — pure black breaks
-  the cute register instantly.
+- Soft, *colored* shadows (tinted with the ink token, never pure black).
 
 ## Security constraints
 
-This page surfaces the user's work across every project. Both constraints are mandatory:
+This page surfaces the user's work across every project. All three are mandatory:
 
 1. Bind the server to `127.0.0.1` only — never `0.0.0.0`.
-2. Collectors emit a **field whitelist**. The `text` field in `timeline.jsonl` carries full
-   conversation transcripts (thousands of words, often sensitive); it must never reach the
-   browser. Auth files live in adjacent directories — read nothing outside the table above.
+2. Collectors emit a **field whitelist**. The `text` field in `timeline.jsonl` (and the full
+   message bodies in codex rollout files) carry entire conversation transcripts, often
+   sensitive; they must never reach the browser. Read nothing outside the source table.
+3. Any path built from a file's own field (e.g. `sessionId` → directory) must be validated:
+   enforce the expected format and confirm the resolved path stays under its root. "The file
+   is written by a trusted tool" is not a substitute for a path-boundary check.
 
 ## Stack and layout
 
@@ -147,12 +163,15 @@ server/
   store.ts               in-memory state + diff push
   collectors/
     index.ts             registry ← the only file touched when adding a source
-    claudeSessions.ts    source 1
+    isAlive.ts           shared pid liveness check
+    claudeSessions.ts    source 1 (+ 2 via claudeTasks)
     claudeTasks.ts       source 2
     claudeJobs.ts        sources 3, 4
     codexJobs.ts         sources 5, 6
+    codexCli.ts          source 7
 web/src/
-  App.tsx Stage.tsx Station.tsx Walker.tsx TaskPanel.tsx
+  App.tsx Station.tsx Walker.tsx TaskPanel.tsx
+  agentStyle.ts          id-prefix → color / label / phrases
   useAgentStream.ts      EventSource → Zustand
 config.json              agent names / colors / fallback phrase banks
 ```

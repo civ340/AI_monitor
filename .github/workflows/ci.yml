@@ -1,0 +1,29 @@
+name: CI
+
+# 什麼時候跑：push 到 main、或有人開 PR 要合進 main 時
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. 把你的程式碼抓到 GitHub 的跑測機器上
+      - uses: actions/checkout@v4
+
+      # 2. 裝 Node（對齊本機的 24），並快取 npm 加速
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # 3. 照 package-lock.json 精準安裝依賴
+      - run: npm ci
+
+      # 4. 你本機在跑的那三道關卡，這裡自動跑一遍
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test

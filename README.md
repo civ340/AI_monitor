@@ -1,60 +1,64 @@
-# AI Agent 辦公室
+# AI Agent Office
 
-把「監控我的 AI coding agent」變成一個可愛的辦公室場景：每個 agent 是一隻在房間裡走動的
-角色，頭上冒出目前在做什麼的對話泡泡，點下去看它手上的任務。資料全部來自本機各 agent
-自己寫的狀態檔，即時更新。
+> 中文版：[README.zh-TW.md](./README.zh-TW.md)
 
-## 監控對象
+Turns "monitor my AI coding agents" into a cute office scene: each agent is a character walking
+around a room, with a speech bubble showing what it's doing right now and a click-to-open panel
+listing its tasks. Everything comes from the state files each agent writes locally, updated live.
 
-| 工位 | 資料來源 |
+## What it monitors
+
+| Station | Data source |
 |---|---|
-| Claude Code（每個 session 一個） | `~/.claude/sessions/`、`~/.claude/tasks/` |
-| Claude Code 背景 job | `~/.claude/jobs/` |
-| Codex（Claude Code 的 codex plugin） | `~/.claude/plugins/data/codex-openai-codex/state/` |
-| Codex CLI（直接下 `codex` 指令跑的） | `~/.codex/sessions/` |
+| Claude Code (one per session) | `~/.claude/sessions/`, `~/.claude/tasks/` |
+| Claude Code background jobs | `~/.claude/jobs/` |
+| Codex (Claude Code's codex plugin) | `~/.claude/plugins/data/codex-openai-codex/state/` |
+| Codex CLI (run directly via `codex`) | `~/.codex/sessions/` |
 
-常駐 agent（Claude Code、Codex）站在自己的工位；被派出的臨時 subagent／背景 job
-會走進房間、做完離場。
+Resident agents (Claude Code, Codex) stand at their own desks; transient sub-agents and
+background jobs walk in on spawn and leave when done.
 
-## 架構
+## Architecture
 
 ```
-collectors/*.ts   讀各 agent 的狀態檔（格式不歸我們控制）
-      ↓ normalize 成 AgentState（shared/types.ts）
-store.ts          記憶體狀態，diff 後只推有變的
+collectors/*.ts   read each agent's state files (shapes we don't control)
+      ↓ normalize into AgentState (shared/types.ts)
+store.ts          in-memory state, diffs and pushes only what changed
       ↓
-Fastify @127.0.0.1:4321   GET /api/state（首屏）、GET /events（SSE）
+Fastify @127.0.0.1:4321   GET /api/state (first paint), GET /events (SSE)
       ↓
-React + Vite      透視視角的房間場景
+React + Vite      perspective-view room scene
 ```
 
-加一個新的 agent 來源＝寫一個 `collectors/*.ts` + 在 `collectors/index.ts` 註冊一行，
-server 與前端都不用動，因為它們只認識 `AgentState`。
+Adding a new agent source = one `collectors/*.ts` + one line in `collectors/index.ts`. The
+server and frontend stay untouched because they only know `AgentState`.
 
-## 開發
+## Development
 
 ```bash
 npm install
-npm run dev:server   # collector 服務，127.0.0.1:4321
-npm run dev:web      # Vite dev server，5173（proxy 轉 /api、/events）
+npm run dev:server   # collector service, 127.0.0.1:4321
+npm run dev:web      # Vite dev server, 5173 (proxies /api and /events)
 ```
 
-開 http://localhost:5173 。右上角顯示「已連線」代表 SSE 通了；沒有 agent 時是空辦公室，
-不是連線失敗。
+Open http://localhost:5173 . "Connected" in the top-right means SSE is live; an empty office
+when no agents are running is expected — it is not a connection failure.
 
-## 上線
+## Production
 
 ```bash
-npm run build        # 產出 server/public/
-npm start            # 只跑 server，開 http://127.0.0.1:4321
+npm run build        # emits server/public/
+npm start            # server only, open http://127.0.0.1:4321
 ```
 
-## 安全
+## Security
 
-- 服務只綁 `127.0.0.1` —— 這頁會顯示你所有專案的工作內容，絕不對外。
-- collector 走欄位白名單。`timeline.jsonl` 的 `text` 欄位是完整對話全文，永遠不會送到前端。
+- The server binds to `127.0.0.1` only — this page surfaces your work across every project, so
+  it is never exposed externally.
+- Collectors emit a field whitelist. The `text` field in `timeline.jsonl` holds full
+  conversation transcripts and never reaches the frontend.
 
-## 設定
+## Configuration
 
-`config.json` 調各 agent 的顯示名、配色與 fallback 對話台詞。泡泡優先顯示 agent 真實的
-當前工作，沒有時才用這裡的台詞墊檔。
+`config.json` sets each agent's display name, colors, and fallback bubble phrases. Bubbles
+prefer the agent's real current task and fall back to these phrases only when none is available.

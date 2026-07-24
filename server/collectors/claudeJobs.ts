@@ -19,7 +19,7 @@ const MAX_LINE_BYTES = 256 * 1024;
 const MAX_DETAIL_CHARS = 200;
 
 /** 實測值域：working / done / blocked */
-type JobState = {
+export type JobState = {
   state?: string;
   detail?: string;
   name?: string;
@@ -113,7 +113,7 @@ async function toAgent(dir: string, short: string): Promise<AgentState | null> {
   };
 }
 
-function deriveState(state: string | undefined): AgentState["state"] {
+export function deriveState(state: string | undefined): AgentState["state"] {
   switch (state) {
     case "working":
       return "working";
@@ -135,7 +135,7 @@ function deriveState(state: string | undefined): AgentState["state"] {
  * 而每個檔案事件都會呼叫一次。整包讀進來的話，光是配置記憶體就能拖垮服務，
  * 所以只讀檔尾固定長度 —— 我們要的永遠只有最後一筆。
  */
-async function latestDetail(dir: string, fallback: string | undefined): Promise<string | undefined> {
+export async function latestDetail(dir: string, fallback: string | undefined): Promise<string | undefined> {
   let handle: FileHandle | undefined;
   try {
     handle = await open(join(dir, "timeline.jsonl"), "r");
@@ -165,7 +165,7 @@ async function latestDetail(dir: string, fallback: string | undefined): Promise<
 }
 
 /** inFlight 已經算好在飛/排隊的數量，直接用，不要自己重算 */
-function inFlightAsTasks(raw: JobState): AgentState["tasks"] {
+export function inFlightAsTasks(raw: JobState): AgentState["tasks"] {
   const running = raw.inFlight?.tasks ?? 0;
   const queued = raw.inFlight?.queued ?? 0;
   const out: AgentState["tasks"] = [];

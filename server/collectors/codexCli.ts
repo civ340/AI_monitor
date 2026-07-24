@@ -138,7 +138,7 @@ type RolloutInfo = {
  * 檔案含完整對話，可能很大，所以檔頭檔尾都只讀固定長度：
  * 檔頭拿 session_meta 的 cwd，檔尾拿最近的事件。
  */
-async function readRollout(path: string): Promise<RolloutInfo> {
+export async function readRollout(path: string): Promise<RolloutInfo> {
   let handle: FileHandle | undefined;
   try {
     handle = await open(path, "r");
@@ -201,7 +201,7 @@ async function readRollout(path: string): Promise<RolloutInfo> {
  */
 const CWD_RE = /"cwd"\s*:\s*"((?:[^"\\]|\\.)*)"/;
 
-function parseCwd(head: string): string | undefined {
+export function parseCwd(head: string): string | undefined {
   const raw = CWD_RE.exec(head)?.[1];
   if (!raw) return undefined;
   try {
@@ -245,7 +245,7 @@ async function readIndex(): Promise<Map<string, string>> {
     for (const line of lines) {
       try {
         const entry = JSON.parse(line) as { id?: string; thread_name?: string };
-        if (entry.id && entry.thread_name) map.set(entry.id, clean(entry.thread_name));
+        if (entry.id && entry.thread_name) map.set(entry.id, cleanThreadName(entry.thread_name));
       } catch {
         // 壞掉的一行不該影響其他
       }
@@ -257,7 +257,7 @@ async function readIndex(): Promise<Map<string, string>> {
 }
 
 /** thread_name 常帶 "Codex Companion Task: <task>..." 這種前綴，去掉雜訊只留人看得懂的部分 */
-function clean(name: string): string {
+export function cleanThreadName(name: string): string {
   return name
     .replace(/^Codex Companion Task:\s*/i, "")
     .replace(/<\/?task>/g, "")

@@ -133,7 +133,7 @@ async function toAgent(path: string): Promise<AgentState | null> {
  * 同一個 PID 可能被別的程式佔用，isAlive 就會對殘留檔說謊。
  * 真正在忙的 session 會持續更新 updatedAt，所以久未更新的 busy 一律不採信。
  */
-function deriveState(status: string | undefined, updatedAt: number): AgentState["state"] {
+export function deriveState(status: string | undefined, updatedAt: number): AgentState["state"] {
   const age = Date.now() - updatedAt;
   if (status === "busy" && age < BUSY_TRUST_MS) return "working";
   return age > OFFLINE_AFTER_MS ? "offline" : "idle";

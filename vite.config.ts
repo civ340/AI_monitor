@@ -9,6 +9,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@shared": fileURLToPath(new URL("./shared", import.meta.url)),
+      "@server": fileURLToPath(new URL("./server", import.meta.url)),
       // 顯示設定放在專案根，前後端共用同一份
       "@config": fileURLToPath(new URL("./config.json", import.meta.url)),
     },

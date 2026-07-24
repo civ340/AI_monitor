@@ -18,7 +18,7 @@ const RECENT_MS = 30 * 60_000;
 const DEBOUNCE_MS = 200;
 
 /** 實測值域：status = running/completed/failed，phase = running/done/failed */
-type CodexJob = {
+export type CodexJob = {
   id?: string;
   kind?: string;
   kindLabel?: string;
@@ -131,7 +131,7 @@ async function readProject(path: string, project: string): Promise<AgentState[]>
  * job.id 只在自己的專案內唯一 —— 攤平多個專案後，同名 id 會在 store 的 Map 裡
  * 互相覆蓋，其中一個專案的狀態就此消失。所以 id 必須帶上專案目錄。
  */
-function toAgent(job: CodexJob, project: string): AgentState | null {
+export function toAgent(job: CodexJob, project: string): AgentState | null {
   if (!job.id) return null;
 
   const state = deriveState(job);
@@ -162,7 +162,7 @@ function toAgent(job: CodexJob, project: string): AgentState | null {
  * 所以宣稱在跑的，一律要向作業系統確認過才算數 —— 否則殭屍會卡住工位，
  * 而且因為 state 是 working 還會跳過時效過濾，永遠清不掉。
  */
-function deriveState(job: CodexJob): AgentState["state"] {
+export function deriveState(job: CodexJob): AgentState["state"] {
   const claimsRunning = job.status === "running" || job.phase === "running";
   if (claimsRunning) return isAlive(job.pid) ? "working" : "offline";
   if (job.status === "failed" || job.phase === "failed") return "idle";

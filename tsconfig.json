@@ -22,8 +22,9 @@
 
     "paths": {
       "@shared/*": ["./shared/*"],
+      "@server/*": ["./server/*"],
       "@config": ["./config.json"]
     }
   },
-  "include": ["shared/**/*.ts", "server/**/*.ts", "web/src/**/*.ts", "web/src/**/*.tsx", "vite.config.ts"]
+  "include": ["shared/**/*.ts", "server/**/*.ts", "web/src/**/*.ts", "web/src/**/*.tsx", "tests/**/*.ts", "vite.config.ts"]
 }
