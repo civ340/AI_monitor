@@ -97,6 +97,12 @@ Cap the population or the room becomes soup: ~2 residents + at most 4 transients
 with any excess collapsed into a corner label ("N more working overtime"). Station count
 follows live data — never hardcode it.
 
+**Scope caveat:** transients here are **background jobs with an on-disk state file**, not
+sub-agents spawned inside a session via the Task/Agent tool. In-session sub-agents run inside
+the host process and never write their own state file, so no collector can see them. Don't
+promise the user that every scout/executor will appear — only background jobs
+(`~/.claude/jobs/`, codex plugin jobs, `/codex:rescue --background`) do.
+
 ## Scene recipe
 
 1. **Room** — a rounded `.stage` with wall/floor gradient, a perspective floor grid for depth,

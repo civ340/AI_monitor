@@ -92,6 +92,11 @@ subagent 是借調來的同事，不是正職 —— 照這個語意建模：
 要設人數上限，不然房間會塞成一團：約 2 個常駐 + 最多 4 個臨時上場，多出來的收進角落標籤
 （「還有 N 位在加班」）。工位數量跟著即時資料走 —— 絕不寫死。
 
+**範圍注意：** 這裡的臨時角色是**在磁碟上有狀態檔的背景 job**，不是透過 Task/Agent tool
+在 session 內派出的 subagent。session 內的 subagent 跑在宿主行程內部，不會寫自己的狀態檔，
+所以任何 collector 都讀不到。別跟使用者保證每個 scout/executor 都會出現 —— 只有背景 job
+（`~/.claude/jobs/`、codex plugin job、`/codex:rescue --background`）才會。
+
 ## 場景配方
 
 1. **房間** — 圓角 `.stage`，牆/地板漸層、透視地板網格製造縱深、幾扇窗、1–2 個裝飾道具。
