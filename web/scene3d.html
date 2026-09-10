@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Agent 辦公室 · 3D 測試場景</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Nunito:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <canvas id="scene"></canvas>
+    <div class="hud">
+      <h1>3D 測試場景</h1>
+      <p>拖曳旋轉 · 滾輪縮放 · 右鍵平移。三個工位對應 Claude Code / Codex / Codex CLI。</p>
+      <div class="row-label">主題</div>
+      <div id="themes" class="pills"></div>
+      <div class="row-label">人物</div>
+      <div id="kinds" class="pills"></div>
+      <p id="drop-hint">把 .glb 拖進畫面可以載入真模型（放在地毯上）</p>
+    </div>
+    <script type="module" src="/src/scene3d/main.ts"></script>
+  </body>
+</html>

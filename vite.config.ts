@@ -33,5 +33,12 @@ export default defineConfig({
   build: {
     outDir: "../server/public",
     emptyOutDir: true,
+    rollupOptions: {
+      // 儀表板與 3D 測試場景各自是一頁，3D 那包才不會拖累主頁的載入
+      input: {
+        main: fileURLToPath(new URL("./web/index.html", import.meta.url)),
+        scene3d: fileURLToPath(new URL("./web/scene3d.html", import.meta.url)),
+      },
+    },
   },
 });

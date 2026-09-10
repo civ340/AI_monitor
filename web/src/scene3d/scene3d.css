@@ -1,0 +1,89 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  font-family: "Nunito", system-ui, sans-serif;
+  color: #4a3b34;
+  background: #f4e7dd;
+}
+
+#scene {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
+
+.hud {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  max-width: min(340px, calc(100vw - 36px));
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 250, 245, 0.82);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 30px rgba(90, 60, 45, 0.18);
+  pointer-events: auto;
+}
+
+.hud h1 {
+  margin: 0 0 4px;
+  font-family: "Baloo 2", "Nunito", system-ui, sans-serif;
+  font-size: 20px;
+}
+
+.hud p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #8a756a;
+}
+
+.row-label {
+  margin: 10px 0 5px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #a8968b;
+}
+
+.pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pills button {
+  padding: 6px 10px;
+  border: 1px solid #e6d3c5;
+  border-radius: 999px;
+  background: #fffaf5;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.pills button[aria-pressed="true"] {
+  background: #ff8a6b;
+  border-color: #ff8a6b;
+  color: #fffaf5;
+}
+
+#drop-hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+/* 拖檔案進來時整頁給個框，不然使用者不知道放哪裡才算數 */
+body.dragging::after {
+  content: "";
+  position: fixed;
+  inset: 12px;
+  border: 3px dashed #ff8a6b;
+  border-radius: 20px;
+  pointer-events: none;
+}
