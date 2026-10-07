@@ -1,0 +1,15 @@
+{
+  "name": "AI Agent 辦公室",
+  "short_name": "AI 辦公室",
+  "description": "本機 AI agent 監控儀表板",
+  "lang": "zh-Hant",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4e7dd",
+  "theme_color": "#ff8a6b",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

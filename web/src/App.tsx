@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence } from "motion/react";
-import type { AgentState } from "@shared/types";
+import type { AgentState, TodaySummary } from "@shared/types";
 import { connectAgentStream, useAgentList, useAgentStore } from "./useAgentStream";
 import Office3D from "./Office3D";
 import TaskPanel from "./TaskPanel";
+import Timeline from "./Timeline";
+import { useAlerts } from "./alerts";
+import { usePolled } from "./usePolled";
 
 const THEMES = [
   { id: "day", label: "☀️ 白天" },
@@ -17,6 +20,10 @@ export default function App() {
   const overflow = useAgentStore((s) => s.overflow);
   const [theme, setTheme] = useState<string>("day");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [showTimeline, setShowTimeline] = useState(false);
+  const alerts = useAlerts(agents);
+  // 今日摘要常駐輪詢：白板每天都要看，時間軸抽屜也吃同一份
+  const summary = usePolled<TodaySummary>(() => "/api/summary/today", 30_000);
 
   useEffect(() => connectAgentStream(), []);
   useEffect(() => {
@@ -41,6 +48,34 @@ export default function App() {
           <span className={`conn conn--${connection}`}>
             {connection === "live" ? "已連線" : connection === "connecting" ? "連線中…" : "連線中斷"}
           </span>
+          <div className="themes tools">
+            {alerts.supported && (
+              <button
+                onClick={alerts.toggleNotify}
+                disabled={alerts.permission === "denied"}
+                aria-pressed={alerts.permission === "granted" && alerts.notifyOn}
+                title={
+                  alerts.permission === "denied"
+                    ? "瀏覽器已封鎖通知，請到網站設定開啟"
+                    : "agent 等你回覆時跳出桌面通知"
+                }
+              >
+                {alerts.permission === "denied"
+                  ? "🔕 通知已封鎖"
+                  : alerts.permission === "default"
+                    ? "🔔 開啟通知"
+                    : alerts.notifyOn
+                      ? "🔔 通知開"
+                      : "🔕 通知關"}
+              </button>
+            )}
+            <button onClick={alerts.toggleSound} aria-pressed={alerts.soundOn} title="等你回覆時的提示音">
+              {alerts.soundOn ? "🔊 提示音" : "🔇 靜音"}
+            </button>
+            <button onClick={() => setShowTimeline((v) => !v)} aria-pressed={showTimeline}>
+              🕒 今日
+            </button>
+          </div>
           <div className="themes">
             {THEMES.map((t) => (
               <button
@@ -56,7 +91,14 @@ export default function App() {
       </header>
 
       <div className="stage">
-        <Office3D agents={agents} theme={theme} onSelect={setOpenId} />
+        <Office3D
+          agents={agents}
+          theme={theme}
+          onSelect={setOpenId}
+          selectedId={openId}
+          summary={summary.data}
+          summaryFailed={summary.failed}
+        />
 
         {agents.length === 0 && (
           <p className="empty">
@@ -68,6 +110,8 @@ export default function App() {
 
         {overflow > 0 && <p className="overflow">還有 {overflow} 位在加班</p>}
       </div>
+
+      {showTimeline && <Timeline summary={summary} onClose={() => setShowTimeline(false)} />}
 
       <AnimatePresence>
         {open && (

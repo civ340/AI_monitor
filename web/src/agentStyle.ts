@@ -48,6 +48,13 @@ export function cssVars(agent: AgentState): CSSProperties {
  * phrase bank 只是沒有真實狀態時的墊檔 —— 別讓假台詞蓋掉真資訊。
  */
 export function bubbleText(agent: AgentState, tick: number): string {
+  // 出錯與卡住是使用者最需要知道的事，優先於一般的 detail
+  if (agent.state === "error") return trim(agent.error || agent.detail || "出錯了");
+  if (agent.stalled) return "好像卡住了…";
+  if (agent.state === "waiting") {
+    if (agent.detail) return trim(agent.detail);
+    return agent.waitingReason === "permission" ? "需要你核准權限" : "等你下一步";
+  }
   if (agent.detail) return trim(agent.detail);
   const bank = styleFor(agent).phrases;
   return bank[tick % bank.length] ?? "…";
