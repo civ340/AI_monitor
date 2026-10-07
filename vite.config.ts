@@ -33,12 +33,8 @@ export default defineConfig({
   build: {
     outDir: "../server/public",
     emptyOutDir: true,
-    rollupOptions: {
-      // 儀表板與 3D 測試場景各自是一頁，3D 那包才不會拖累主頁的載入
-      input: {
-        main: fileURLToPath(new URL("./web/index.html", import.meta.url)),
-        scene3d: fileURLToPath(new URL("./web/scene3d.html", import.meta.url)),
-      },
-    },
+    // 只有 index.html 進 production；scene3d.html 與 charstyle.html 是開發用的
+    // 測試頁（含 .glb 拖放載入器與 window.__scene3d debug hook），不該被
+    // collector 當靜態檔對外提供。dev server 仍會照常提供這兩頁。
   },
 });

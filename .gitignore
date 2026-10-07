@@ -7,3 +7,6 @@ server/public/
 # Playwright 截圖與暫存
 .playwright-mcp/
 *.png
+
+# subagent hook 事件檔（本機執行期資料，只含白名單欄位）
+.data/
