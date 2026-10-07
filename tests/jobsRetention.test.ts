@@ -8,9 +8,13 @@ import { codexJobsCollector, ERROR_KEEP_MS as CODEX_ERROR_KEEP_MS } from "@serve
 
 const NOW = new Date("2026-10-06T12:00:00Z").getTime();
 
-/** setTimeout 被 fake 了，真實的檔案 IO 要靠 setImmediate 輪詢等它完成 */
-async function waitForEmits(emits: unknown[], count: number): Promise<void> {
-  for (let i = 0; i < 5000 && emits.length < count; i++) await new Promise((r) => setImmediate(r));
+/**
+ * setTimeout 被 fake 了，真實的檔案 IO 要靠 setImmediate 輪詢等它完成。
+ * 等的是「最後一次 emit 符合條件」而不是 emit 次數：快轉前就已開跑的掃描
+ * 可能在快轉後才 emit 出舊結果，只數次數會偶發拿到那筆過時資料。
+ */
+async function waitForLast<T>(emits: T[], ok: (last: T | undefined) => boolean): Promise<void> {
+  for (let i = 0; i < 5000 && !ok(emits.at(-1)); i++) await new Promise((r) => setImmediate(r));
 }
 
 describe("error job 保留期過後會自己離場（不需要任何檔案事件）", () => {
@@ -37,9 +41,8 @@ describe("error job 保留期過後會自己離場（不需要任何檔案事件
     await c.start((a) => emits.push(a));
     expect(emits.at(-1)?.map((a) => a.state)).toEqual(["error"]);
 
-    const before = emits.length;
     vi.advanceTimersByTime(ERROR_KEEP_MS + 5_000);
-    await waitForEmits(emits, before + 1);
+    await waitForLast(emits, (last) => last?.length === 0);
     expect(emits.at(-1)).toEqual([]);
     await c.stop();
   });
@@ -56,9 +59,8 @@ describe("error job 保留期過後會自己離場（不需要任何檔案事件
     await c.start((a) => emits.push(a));
     expect(emits.at(-1)?.some((a) => a.state === "error")).toBe(true);
 
-    const before = emits.length;
     vi.advanceTimersByTime(CODEX_ERROR_KEEP_MS + 5_000);
-    await waitForEmits(emits, before + 1);
+    await waitForLast(emits, (last) => last !== undefined && !last.some((a) => a.state === "error"));
     expect(emits.at(-1)?.some((a) => a.state === "error")).toBe(false);
 
     // stop() 之後不再有任何重掃
