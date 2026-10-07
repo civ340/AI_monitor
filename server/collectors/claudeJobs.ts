@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
 import type { AgentState, Collector } from "@shared/types.js";
+import { nextExpiryDelay } from "./retention.js";
 
 const JOBS_ROOT = join(homedir(), ".claude", "jobs");
 
@@ -10,6 +11,11 @@ const JOBS_ROOT = join(homedir(), ".claude", "jobs");
 const RECENT_MS = 30 * 60_000;
 
 const DEBOUNCE_MS = 200;
+
+/** 失敗的 job 在畫面上多留這麼久（要看得到它掛了），之後離場 */
+export const ERROR_KEEP_MS = 60_000;
+/** error 摘要上限 */
+const MAX_ERROR_CHARS = 160;
 
 /** 只讀 timeline 檔尾這麼多位元組。一筆 entry 遠小於此，夠撈到最後一行 */
 const TAIL_BYTES = 16 * 1024;
@@ -28,23 +34,40 @@ export type JobState = {
   sessionId?: string;
   inFlight?: { tasks?: number; queued?: number };
   updatedAt?: string;
+  /**
+   * 失敗訊號。實測的 state 值域只有 working/done/blocked，還沒見過失敗樣本，
+   * 這裡防禦性地認 state = failed/error，以及非 0 的 exitCode；真有別的格式再補。
+   */
+  exitCode?: number;
+  error?: string;
 };
 
 /**
  * 資料源 3、4：~/.claude/jobs/<short>/{state.json, timeline.jsonl}
  * 背景 job 是被派出去的臨時同事 —— 一律 transient。
  */
-export function claudeJobsCollector(): Collector {
+export function claudeJobsCollector(root: string = JOBS_ROOT): Collector {
   let watcher: FSWatcher | undefined;
   let timer: NodeJS.Timeout | undefined;
+  /** 保留期到期重掃：這個 collector 只靠檔案事件觸發，過期不會有新事件 */
+  let expiryTimer: NodeJS.Timeout | undefined;
+  let stopped = false;
 
   return {
     name: "claude-jobs",
 
     async start(emit) {
       const scan = async (): Promise<void> => {
+        clearTimeout(expiryTimer);
         try {
-          emit(await collect());
+          const agents = await collect(root);
+          if (stopped) return;
+          emit(agents);
+          const delay = nextExpiryDelay(agents, (a) => (a.state === "working" ? undefined : a.state === "error" ? ERROR_KEEP_MS : RECENT_MS));
+          if (delay !== undefined) {
+            expiryTimer = setTimeout(() => void scan(), delay);
+            expiryTimer.unref?.();
+          }
         } catch (err) {
           console.error("[claude-jobs] 掃描失敗:", err);
         }
@@ -55,7 +78,7 @@ export function claudeJobsCollector(): Collector {
         timer = setTimeout(() => void scan(), DEBOUNCE_MS);
       };
 
-      watcher = chokidar.watch(JOBS_ROOT, {
+      watcher = chokidar.watch(root, {
         ignoreInitial: true,
         depth: 1,
         awaitWriteFinish: { stabilityThreshold: 120, pollInterval: 30 },
@@ -67,21 +90,31 @@ export function claudeJobsCollector(): Collector {
     },
 
     async stop() {
+      stopped = true;
       clearTimeout(timer);
+      clearTimeout(expiryTimer);
       await watcher?.close();
     },
   };
 }
 
-async function collect(): Promise<AgentState[]> {
+async function collect(root: string): Promise<AgentState[]> {
   let dirs: string[];
   try {
-    dirs = await readdir(JOBS_ROOT);
+    dirs = await readdir(root);
   } catch {
     return [];
   }
 
-  const agents = await Promise.all(dirs.map((d) => toAgent(join(JOBS_ROOT, d), d)));
+  // 單一壞檔不得拖垮整個來源：每個 job 各自 try/catch
+  const agents = await Promise.all(
+    dirs.map((d) =>
+      toAgent(join(root, d), d).catch((err) => {
+        console.warn(`[claude-jobs] 略過壞掉的 job ${d}:`, err);
+        return null;
+      }),
+    ),
+  );
   return agents.filter((a): a is AgentState => a !== null);
 }
 
@@ -97,20 +130,41 @@ async function toAgent(dir: string, short: string): Promise<AgentState | null> {
     return null;
   }
 
-  const state = deriveState(raw.state);
-  // 跑完很久的 job 不該還占著位子；還在跑的一律留著
-  if (state !== "working" && Date.now() - updatedAt > RECENT_MS) return null;
+  if (raw === null || typeof raw !== "object") return null;
+  const failure = failureOf(raw);
+  const state = failure ? "error" : deriveState(raw.state);
+  if (failure) {
+    // 失敗的只留 60 秒
+    if (Date.now() - updatedAt > ERROR_KEEP_MS) return null;
+  } else if (state !== "working" && Date.now() - updatedAt > RECENT_MS) {
+    // 跑完很久的 job 不該還占著位子；還在跑的一律留著
+    return null;
+  }
 
   return {
     id: `job:${short}`,
     kind: "transient",
-    name: raw.name ?? raw.intent?.slice(0, 24) ?? `job ${short}`,
+    name: strOr(raw.name) ?? strOr(raw.intent)?.slice(0, 24) ?? `job ${short}`,
     state,
-    detail: await latestDetail(dir, raw.detail),
-    cwd: raw.cwd,
+    detail: await latestDetail(dir, strOr(raw.detail)),
+    cwd: strOr(raw.cwd),
     tasks: inFlightAsTasks(raw),
     updatedAt,
+    lastActivityAt: updatedAt,
+    ...(failure ? { error: failure } : {}),
   };
+}
+
+const strOr = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
+
+/** 判斷 job 是不是失敗了；是的話回一行摘要（≤160 字），否則 undefined */
+export function failureOf(raw: JobState): string | undefined {
+  const failed =
+    raw.state === "failed" || raw.state === "error" || (typeof raw.exitCode === "number" && raw.exitCode !== 0);
+  if (!failed) return undefined;
+  // 欄位型別不可信（別的版本可能把 error 寫成物件）：只收字串
+  const text = strOr(raw.error) ?? strOr(raw.detail) ?? (typeof raw.exitCode === "number" ? `exit code ${raw.exitCode}` : "failed");
+  return text.replace(/\s+/g, " ").trim().slice(0, MAX_ERROR_CHARS) || "failed";
 }
 
 export function deriveState(state: string | undefined): AgentState["state"] {

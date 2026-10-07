@@ -32,7 +32,7 @@ const PROGRESS_BY_STATUS: Record<string, number> = {
  * 而一旦它長得像 `../../something`，collector 就會跑出 ~/.claude/tasks
  * 去讀別人的檔案，再把內容經由 SSE 送進瀏覽器。白名單約束不能只靠來源可信。
  */
-const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function readTasks(sessionId: string): Promise<AgentTask[]> {
   if (!SESSION_ID_RE.test(sessionId)) return [];

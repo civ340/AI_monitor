@@ -2,7 +2,7 @@ import { open, readdir, readFile, stat, type FileHandle } from "node:fs/promises
 import { homedir } from "node:os";
 import { join } from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
-import type { AgentState, Collector } from "@shared/types.js";
+import type { AgentState, AgentUsage, Collector } from "@shared/types.js";
 
 const CODEX_HOME = join(homedir(), ".codex");
 const SESSIONS_ROOT = join(CODEX_HOME, "sessions");
@@ -15,6 +15,10 @@ const RECENT_MS = 30 * 60_000;
 
 /** sessions/ 從年初累積至今，只看最近幾天的目錄，不然每次掃描都要走完整棵樹 */
 const SCAN_DAYS = 2;
+
+/** 失敗的 turn 在畫面上多留這麼久，之後回到 idle */
+export const ERROR_KEEP_MS = 60_000;
+const MAX_ERROR_CHARS = 160;
 
 const POLL_MS = 5_000;
 const DEBOUNCE_MS = 300;
@@ -105,16 +109,23 @@ async function collect(): Promise<AgentState[]> {
 
       const info = await readRollout(join(dir, file));
 
+      const working = info.working ?? age < ACTIVE_MS;
+      // 最近一輪以錯誤收尾、而且剛發生（60 秒內）才顯示 error
+      const failed = !working && info.error !== undefined && age <= ERROR_KEEP_MS;
+
       out.push({
         id: `codex-cli:${id.slice(0, 8)}`,
         kind: "resident",
         name: "Codex CLI",
         // 事件說了算；事件讀不到才退回 mtime 猜測
-        state: (info.working ?? age < ACTIVE_MS) ? "working" : "idle",
+        state: failed ? "error" : working ? "working" : "idle",
         detail: info.detail ?? names.get(id),
         cwd: info.cwd,
         tasks: [],
         updatedAt: mtime,
+        lastActivityAt: mtime,
+        ...(failed ? { error: info.error } : {}),
+        ...(info.usage ? { usage: info.usage } : {}),
       });
     }
   }
@@ -127,7 +138,47 @@ type RolloutInfo = {
   working?: boolean;
   detail?: string;
   cwd?: string;
+  /** 最近一輪（task_started 之後）出現過 error 事件時的一行摘要 */
+  error?: string;
+  /** 檔尾最後一筆 token_count 事件換算的用量（不算 costUsd） */
+  usage?: AgentUsage;
 };
+
+type TokenUsageRaw = {
+  input_tokens?: number;
+  cached_input_tokens?: number;
+  cache_write_input_tokens?: number;
+  output_tokens?: number;
+};
+
+const n = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0);
+
+/**
+ * token_count 事件 → AgentUsage。
+ *
+ * 實測格式（codex 本機 rollout）：payload.info.total_token_usage 是整個 thread 的累計，
+ * last_token_usage 是最近一輪，model_context_window 是 context 上限。codex 的 input_tokens
+ * 含 cached_input_tokens，所以 inputTokens 扣掉 cached 才不會跟 cacheRead 重複。
+ * rollout 沒有 model 欄位在 token_count 內（在 turn_context），這裡不填 model、不算 costUsd。
+ */
+export function parseTokenCount(payload: unknown): AgentUsage | undefined {
+  const info = (payload as { info?: { total_token_usage?: TokenUsageRaw; last_token_usage?: TokenUsageRaw; model_context_window?: number } } | null)?.info;
+  const total = info?.total_token_usage;
+  if (!total || typeof total !== "object") return undefined;
+  const cached = n(total.cached_input_tokens);
+  const usage: AgentUsage = {
+    inputTokens: Math.max(0, n(total.input_tokens) - cached),
+    outputTokens: n(total.output_tokens),
+    cacheReadTokens: cached,
+    cacheCreationTokens: n(total.cache_write_input_tokens),
+  };
+  const last = info?.last_token_usage;
+  if (last && typeof last === "object") usage.contextTokens = n(last.input_tokens);
+  if (typeof info?.model_context_window === "number" && info.model_context_window > 0) {
+    usage.contextLimit = info.model_context_window;
+  }
+  return usage;
+}
 
 /**
  * 從 rollout 檔讀出「現在在做什麼」。
@@ -159,6 +210,8 @@ export async function readRollout(path: string): Promise<RolloutInfo> {
     let startedTurn: string | undefined;
     let completedTurn: string | undefined;
     let detail: string | undefined;
+    let error: string | undefined;
+    let usage: AgentUsage | undefined;
 
     for (const line of lines) {
       let payload: { type?: string; turn_id?: string; message?: string };
@@ -173,19 +226,27 @@ export async function readRollout(path: string): Promise<RolloutInfo> {
       switch (payload.type) {
         case "task_started":
           startedTurn = payload.turn_id;
+          error = undefined; // 新的一輪開始，上一輪的錯誤不再相關
+          break;
+        case "error":
+          // 格式未經實測確認（本機 rollout 沒出現過 error 事件）：認 type === "error" + message
+          error = (typeof payload.message === "string" ? payload.message : "error").replace(/\s+/g, " ").trim().slice(0, MAX_ERROR_CHARS) || "error";
+          break;
+        case "token_count":
+          usage = parseTokenCount(payload) ?? usage;
           break;
         case "task_complete":
           completedTurn = payload.turn_id;
           break;
         case "user_message":
           // 使用者交辦的那句話就是「目前工作」；只取開頭，不要整段搬進前端
-          if (payload.message) detail = payload.message.replace(/\s+/g, " ").trim().slice(0, MAX_DETAIL_CHARS);
+          if (typeof payload.message === "string" && payload.message) detail = payload.message.replace(/\s+/g, " ").trim().slice(0, MAX_DETAIL_CHARS);
           break;
       }
     }
 
     const working = startedTurn === undefined ? undefined : startedTurn !== completedTurn;
-    return { working, detail, cwd };
+    return { working, detail, cwd, error, usage };
   } catch {
     return {};
   } finally {

@@ -16,8 +16,8 @@ describe("codexJobs deriveState", () => {
     expect(deriveState({ phase: "running", pid: null })).toBe("offline");
   });
 
-  it("failed → idle", () => {
-    expect(deriveState({ status: "failed", pid: null })).toBe("idle");
+  it("failed → error", () => {
+    expect(deriveState({ status: "failed", pid: null })).toBe("error");
   });
 
   it("completed → offline", () => {

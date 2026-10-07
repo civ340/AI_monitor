@@ -83,3 +83,61 @@ describe("readRollout task_started/complete 配對", () => {
     expect(await readRollout(join(dir, "nope.jsonl"))).toEqual({});
   });
 });
+
+describe("codexCli token_count 與 error", () => {
+  const tc = (total: object, last: object, window = 258400) =>
+    JSON.stringify({
+      type: "event_msg",
+      payload: { type: "token_count", info: { total_token_usage: total, last_token_usage: last, model_context_window: window } },
+    });
+
+  it("parseTokenCount：input 扣掉 cached，context 用 last 的 input_tokens", async () => {
+    const { parseTokenCount } = await import("@server/collectors/codexCli.js");
+    const u = parseTokenCount({
+      type: "token_count",
+      info: {
+        total_token_usage: { input_tokens: 1000, cached_input_tokens: 400, cache_write_input_tokens: 5, output_tokens: 70 },
+        last_token_usage: { input_tokens: 300 },
+        model_context_window: 258400,
+      },
+    });
+    expect(u).toEqual({ inputTokens: 600, outputTokens: 70, cacheReadTokens: 400, cacheCreationTokens: 5, contextTokens: 300, contextLimit: 258400 });
+    expect(parseTokenCount({ type: "token_count", info: null })).toBeUndefined();
+  });
+
+  let dir: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "aimon-codex-"));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const ev = (payload: object) => JSON.stringify({ type: "event_msg", payload });
+
+  it("readRollout 取最後一筆 token_count 當 usage", async () => {
+    const f = join(dir, "r.jsonl");
+    await writeFile(
+      f,
+      [
+        JSON.stringify({ type: "session_meta", payload: { cwd: "C:/x" } }),
+        ev({ type: "task_started", turn_id: "t1" }),
+        tc({ input_tokens: 10, cached_input_tokens: 0, output_tokens: 1 }, { input_tokens: 10 }),
+        tc({ input_tokens: 50, cached_input_tokens: 20, output_tokens: 9 }, { input_tokens: 40 }),
+        ev({ type: "task_complete", turn_id: "t1" }),
+      ].join("\n") + "\n",
+    );
+    const info = await readRollout(f);
+    expect(info.usage).toMatchObject({ inputTokens: 30, cacheReadTokens: 20, outputTokens: 9, contextTokens: 40 });
+    expect(info.working).toBe(false);
+    expect(info.error).toBeUndefined();
+  });
+
+  it("error 事件記下單行摘要；下一輪 task_started 會清掉", async () => {
+    const f = join(dir, "e.jsonl");
+    await writeFile(f, [ev({ type: "task_started", turn_id: "t1" }), ev({ type: "error", message: "rate\nlimit  hit" })].join("\n") + "\n");
+    expect((await readRollout(f)).error).toBe("rate limit hit");
+    await writeFile(f, [ev({ type: "error", message: "old" }), ev({ type: "task_started", turn_id: "t2" })].join("\n") + "\n");
+    expect((await readRollout(f)).error).toBeUndefined();
+  });
+});
