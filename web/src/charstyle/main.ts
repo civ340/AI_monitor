@@ -170,11 +170,16 @@ if (wanted !== null) {
 // 動畫定格在固定時間點，截圖才不會每次姿勢都不一樣
 const frozen = new URLSearchParams(location.search).get("t");
 
+// 拿 canvas.width 比對會永遠不相等（那是乘過 pixelRatio 又取整的裝置像素），變成每幀都重設 size
+let lastW = 0;
+let lastH = 0;
+
 function resize(): void {
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
-  if (canvas.width === w * renderer.getPixelRatio() && canvas.height === h * renderer.getPixelRatio())
-    return;
+  if (w === lastW && h === lastH) return;
+  lastW = w;
+  lastH = h;
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();

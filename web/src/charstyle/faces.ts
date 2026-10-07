@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { markOwned } from "./toon";
 
 /**
  * 動漫臉不能用幾何體堆 —— 大眼睛的高光、睫毛、腮紅在 low-poly 球體上做不出來，
@@ -207,9 +208,11 @@ export function makeFacePatch(headRadius: number, o: FaceOpts): THREE.Mesh {
     Math.PI / 2 - thetaLen * 0.46,
     thetaLen,
   );
+  // 這張臉是這個角色現畫的（512×512 CanvasTexture），沒有跨角色共用的餘地，
+  // 所以連同材質標成自有 —— 角色 dispose 時得把貼圖一起丟掉
   const mesh = new THREE.Mesh(
     geo,
-    new THREE.MeshBasicMaterial({ map: makeFaceTexture(o), transparent: true }),
+    markOwned(new THREE.MeshBasicMaterial({ map: makeFaceTexture(o), transparent: true })),
   );
   mesh.userData.noOutline = true;
   return mesh;

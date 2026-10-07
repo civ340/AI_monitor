@@ -1,16 +1,20 @@
 import * as THREE from "three";
 import type { Character } from "../scene3d/characters";
 import { ANIME_KINDS } from "../charstyle/animeChars";
+import { disposeOwnedMaterial, isOwned } from "../charstyle/toon";
 import config from "@config";
 
 /**
  * 把動漫角色接到 office.ts 的角色工廠介面上。
  *
- * 兩件事必須在這裡處理，動漫角色模組本身不該知道辦公室的存在：
+ * 三件事必須在這裡處理，動漫角色模組本身不該知道辦公室的存在：
  * 1. 那套角色自帶一片假的軟陰影（給沒有陰影貼圖的試作頁用的），
  *    辦公室有真的 shadow map，兩層疊起來腳下會糊成一塊。
- * 2. 材質是模組層以顏色為 key 的快取、跨角色共用（膚色每個人都同一份），
- *    所以 dispose 只能丟幾何 —— 丟材質會把還在場上的其他人一起弄壞。
+ * 2. 描邊殼不該投影：shadow pass 會換成自己的 depth material，
+ *    完全忽略描邊那支頂點位移 shader，殼在陰影上零貢獻卻讓 draw call 翻倍。
+ * 3. 材質分兩種：toon.ts 裡以顏色為 key 的共用快取（丟掉會弄壞還在場上的人），
+ *    以及每個角色現做的臉部貼圖／描邊／發光材質（不丟就是純漏）。
+ *    後者在 toon.ts 標了 owned 旗標，這裡照旗標決定丟不丟。
  */
 
 type AgentConfig = { label: string; character?: string };
@@ -43,6 +47,8 @@ export function makeAnimeCharacter(agentId: string, accent: number): Character {
   const group = built.group;
 
   const ownGeometries: THREE.BufferGeometry[] = [];
+  // 用 Set：同一份自有材質會掛在好幾個 mesh 上（描邊殼整組共用一份 ShaderMaterial）
+  const ownMaterials = new Set<THREE.Material>();
   const blobs: THREE.Object3D[] = [];
   group.traverse((o) => {
     const mesh = o as THREE.Mesh;
@@ -51,8 +57,11 @@ export function makeAnimeCharacter(agentId: string, accent: number): Character {
       blobs.push(mesh);
       return;
     }
-    mesh.castShadow = true;
+    // 描邊殼不投影，其餘的才進 shadow pass
+    if (mesh.userData.outlineShell !== true) mesh.castShadow = true;
     ownGeometries.push(mesh.geometry);
+    const used = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of used) if (m && isOwned(m)) ownMaterials.add(m);
   });
   for (const b of blobs) {
     b.removeFromParent();
@@ -67,8 +76,10 @@ export function makeAnimeCharacter(agentId: string, accent: number): Character {
     group,
     update: built.update,
     dispose() {
-      // 只丟幾何。材質全是 toon.ts 裡以顏色為 key 的共用快取，丟掉會波及其他角色
       for (const g of ownGeometries) g.dispose();
+      // 只丟這個角色自己的材質；共用快取那份留給還在場上的人
+      for (const m of ownMaterials) disposeOwnedMaterial(m);
+      ownMaterials.clear();
     },
   };
 }

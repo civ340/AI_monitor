@@ -44,16 +44,46 @@ export function toonMat(color: number, soft = false): THREE.MeshToonMaterial {
   return m;
 }
 
-/** 自發光（兜帽角色的眼睛、螢幕）不吃燈光，直接給 basic */
+/**
+ * 標記「這份材質是這個角色自己的」。
+ * toonMat 那種以顏色為 key 的共用快取跨角色共用，丟掉會波及還在場上的人；
+ * 這裡標起來的則是每個角色現做的，角色 dispose 時必須跟著丟，
+ * 否則 job 來來去去會把材質與貼圖無上限累積在 GPU 上。
+ */
+export function markOwned<T extends THREE.Material>(mat: T): T {
+  mat.userData.owned = true;
+  return mat;
+}
+
+/** 這份材質是不是角色自有（可丟）的 */
+export function isOwned(mat: THREE.Material): boolean {
+  return mat.userData.owned === true;
+}
+
+/**
+ * 丟掉一份角色自有材質，連同它自己做的貼圖。
+ * 描邊材質同時要從 outlineMats 移除 —— 不然換主題時會一直遍歷到早就死掉的材質。
+ */
+export function disposeOwnedMaterial(mat: THREE.Material): void {
+  outlineMats.delete(mat as THREE.ShaderMaterial);
+  const withMap = mat as THREE.Material & { map?: THREE.Texture | null };
+  withMap.map?.dispose();
+  mat.dispose();
+}
+
+/** 自發光（兜帽角色的眼睛、螢幕）不吃燈光，直接給 basic。無法以顏色共用，屬角色自有 */
 export function glowMat(color: number): THREE.MeshBasicMaterial {
-  return new THREE.MeshBasicMaterial({ color, toneMapped: false });
+  return markOwned(new THREE.MeshBasicMaterial({ color, toneMapped: false }));
 }
 
 /**
  * 反向外殼描邊：同一份幾何沿法線推出去一點、只畫背面。
  * 用 ShaderMaterial 而不是「整體放大 1.03」——後者在細長物件上會把線畫成粗細不均。
  */
-const outlineMats: THREE.ShaderMaterial[] = [];
+// 用 Set 而不是陣列：角色 dispose 時要能把自己那份描邊材質移除。
+// 陣列只進不出的話，長時間 churn 之後這裡會壓著幾百份死材質，
+// 而每次切主題都得整批遍歷改寫。
+const outlineMats = new Set<THREE.ShaderMaterial>();
 let outlineColor = 0x4a3340;
 
 /**
@@ -82,7 +112,7 @@ function outlineMaterial(width: number, color: number): THREE.ShaderMaterial {
       void main() { gl_FragColor = vec4(uColor, 1.0); }
     `,
   });
-  outlineMats.push(mat);
+  outlineMats.add(markOwned(mat));
   return mat;
 }
 
@@ -122,6 +152,9 @@ export function addOutlines(root: THREE.Object3D, width = 0.016, color = outline
   for (const m of targets) {
     const shell = new THREE.Mesh(shellGeometry(m.geometry), mat);
     shell.userData.noOutline = true;
+    // 標起來給場景端認：描邊殼靠頂點位移撐開，而 shadow pass 會換成自己的
+    // depth material、完全忽略那個 shader，所以它對陰影零貢獻，不該投影
+    shell.userData.outlineShell = true;
     shell.renderOrder = -1;
     m.add(shell);
   }
@@ -146,5 +179,9 @@ export function makeBlobShadow(radius = 0.55): THREE.Mesh {
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.y = 0.012;
   mesh.userData.noOutline = true;
+  // 標起來給場景端認：有真陰影的場景（office3d）會把這片拆掉，
+  // 兩層疊起來腳下會糊成一塊。沒標的話那邊的拆除分支等於死碼，
+  // 貼片會留在場上、進 shadow pass，材質與貼圖也跟著漏。
+  mesh.userData.blobShadow = true;
   return mesh;
 }
